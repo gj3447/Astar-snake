@@ -2,6 +2,8 @@ import pygame as pg
 import random
 import time
 
+nodefindvalue = int(1)
+
 class Map:
     def __init__(self,x,y,box_size):
         self.screen = pg.display.set_mode
@@ -9,14 +11,17 @@ class Map:
         self.x = x
         self.y = y
         self.box_size = box_size
-        self.screen = pg.display.set_mode([self.box_size * (x+int(1)), self.box_size * (y+int(1))])
+        self.screen = pg.display.set_mode([self.box_size * (x), self.box_size * (y)])
         self.node = [[Node(x=row,y=col) for col in range(self.x)] for row in range(self.y)]
         self.food = Food(map=self)
         self.snake = Snake(x=int(0),y=int(0),map=self)
         self.snake.waycreate()
         self.display()
         self.stop = False
-
+    def nodereset(self):
+        for e in self.node:
+            for a in e:
+                a.find = int(0)
     def update(self):
         if self.stop:
             return
@@ -26,20 +31,29 @@ class Map:
     def display(self,openway=None,closeway=None,currentway=None):
         self.screen.fill((0,0,0))
 
+        
+        if not(closeway==None):
+            while len(closeway)>0:
+                node = closeway[0].node
+                closeremove = []
+                for e in closeway:
+                    if e.node == node:
+                        closeremove.append(e)
+                block = pg.Rect((node.x*self.box_size, node.y*self.box_size), (self.box_size, self.box_size))
+                value = len(closeremove)*5
+                pg.draw.rect(self.screen, (value,value,value), block)
+                for e in closeremove:
+                    closeway.remove(e)
+        
+        self.snake.draw()
+        if not(currentway==None):
+            for e in currentway:
+                block = pg.Rect((e.node.x*self.box_size, e.node.y*self.box_size), (self.box_size, self.box_size))
+                pg.draw.rect(self.screen, (0,255,0), block)
         if not(openway==None):
             for e in openway:
                 block = pg.Rect((e.node.x*self.box_size, e.node.y*self.box_size), (self.box_size, self.box_size))
-                pg.draw.rect(self.screen, (0,0,100), block)
-        
-        if not(closeway==None):
-            for e in closeway:
-                block = pg.Rect((e.node.x*self.box_size, e.node.y*self.box_size), (self.box_size, self.box_size))
-                pg.draw.rect(self.screen, (50,50,50), block)
-        
-        if not(currentway==None):
-            block = pg.Rect((currentway.node.x*self.box_size, currentway.node.y*self.box_size), (self.box_size, self.box_size))
-            pg.draw.rect(self.screen, (255,0,0), block)
-        self.snake.draw()
+                pg.draw.rect(self.screen, (0,0,255), block)
         self.food.draw()
         pg.display.flip()
     def inside(self,x,y):
@@ -92,11 +106,11 @@ class Food:
 class Snake:
     def __init__(self,x,y,map):
         self.life = int(1)
+        self.way = None
         self.x = x
         self.y = y
         self.map = map
         self.tail = []
-        self.way = None
         self.tailcreate()
     def move(self):
         if not (self.way.nextway == None):
@@ -107,7 +121,6 @@ class Snake:
             self.life +=int(1)
             self.map.food.replace()
             if self.waycreate():
-                print("긴급종료")
                 return True
             self.way = self.way.nextway
             self.tailcreate()
@@ -130,8 +143,12 @@ class Snake:
             self.tail.remove(remove)
     def draw(self):
         for e in self.tail:
+            value = 255*e.value/self.life
             block = pg.Rect((e.x*self.map.box_size, e.y*self.map.box_size), (self.map.box_size, self.map.box_size))
-            pg.draw.rect(self.map.screen, (255,255,255), block)
+            pg.draw.rect(self.map.screen, (value,value,value), block)
+            '''
+        block = pg.Rect((self.x*self.map.box_size, self.y*self.map.box_size), (self.map.box_size, self.map.box_size))
+        pg.draw.rect(self.map.screen, (255,255,255), block)'''
     def waycreate(self):
         self.way = Way(map=self.map,node=self.map.node[self.x][self.y],count=0)
         wayarray = []
@@ -140,6 +157,7 @@ class Snake:
         while len(wayarray)<100000:
             min = None
             if len(wayarray) ==0:
+                print("길이없습니다")
                 return True
             for e in wayarray:
                 if min ==None:
@@ -151,18 +169,19 @@ class Snake:
                     if min.value> e.value:
                         min = e
             expandarray = min.expand()
-            if not (min.backway==None):
-                min.backway.nextway = min
             printstring ='list'
             for e in wayarray:
                 printstring += " "+str(e.distance)
             wayarray.remove(min)
             wayclose.append(min)
             wayarray.extend(expandarray)
-            self.map.display(currentway=min,openway=expandarray,closeway=wayclose)
-            print(e.value,end='')
+            self.map.display(currentway=min.waylist(),openway=expandarray,closeway=wayclose)
             if self.map.food.inside(min.node.x,min.node.y):
-                break
+                min.waynextset()
+                self.map.nodereset()
+                return False
+        print("스택오버플로")
+        return True
 
 class Node:
     def __init__(self,x,y):
@@ -170,6 +189,7 @@ class Node:
         self.y = y
         self.node = None
         self.value = int(0)
+        self.find = int(0)
 class Way:
     def string(self):
         return '['+str(self.node.x)+','+str(self.node.y)+'] C'+str(self.count)+' D'+str(self.distance)+' V'+str(self.value)
@@ -180,29 +200,35 @@ class Way:
         self.backway = None
         self.nextway = None
         self.distance = map.food.distance(x=node.x,y=node.y)
-        self.value = self.distance+count
+        self.value = self.distance+count + node.find*nodefindvalue
+        node.find +=int(1)
+    def tailway(self,life):
+        result = []
+        currentway = self
+        for e in range(life):
+            if currentway.backway==None:
+                return result
+            else:
+                currentway = currentway.backway
+            result.append(currentway)
+        return result
     def expand(self):
         x= self.node.x
         y = self.node.y
         count = self.count+1
         vectorarray = [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]
+        checksum = [[x+2,y],[x-2,y],[x,y+2],[x,y-2]]
         nodearray = []
-        tailwayarray = []
+        checkarray = []
+        tailway = self.tailway(self.map.snake.life)
         result = []
-        tailway= self
-        for e in range(self.map.snake.life-1):
-            if tailway.backway==None:
-                break;
-            else:
-                tailway = self.backway
-                tailwayarray.append(tailway)
         for e in vectorarray:
             if self.map.possible(x=e[0],y=e[1],count=self.count):
                 nodearray.append(self.map.node[e[0]][e[1]])
-        for e in tailwayarray:
+        for e in tailway:
             remove = None
             for a in nodearray:
-                if a == tailway.node:
+                if a==e.node:
                     remove = a
                     break
             if not remove == None:
@@ -211,17 +237,35 @@ class Way:
             newway = Way(map=self.map,node=e,count=count)
             newway.backway = self
             result.append(newway)
+        
         return result
+    def waylist(self):
+        result = []
+        currentway = self
+        while not (currentway.backway==None):
+            result.append(currentway)
+            currentway = currentway.backway
+        result.append(currentway)
+        return result
+    def waynextset(self):
+        currentway = self
+        while not (currentway.backway ==None):
+            currentway.backway.nextway = currentway
+            currentway = currentway.backway
 
 if __name__ == "__main__":
     time_ = int(1)
-    map_ = Map(x = 10 , y = 10 ,box_size=50)
+    map_ = Map(x = 20 , y = 20 ,box_size=50)
 
     end_ = False
+    start_ = False
     while not end_:
-        time.sleep(0.05)
-        map_.update()
+        time.sleep(0.02)
+        if start_ :
+            map_.update()
         for event in pg.event.get():
             if event.type == pg.KEYDOWN:
                 if event.key ==pg.K_ESCAPE:
                     end_ = True
+                if event.key ==pg.K_s:
+                    start_=True
