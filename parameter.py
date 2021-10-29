@@ -1,0 +1,13 @@
+map_count_x = int(10)
+map_count_y = int(10)
+map_size_x = int(20)
+map_size_y = int(20)
+box_size = int(3)
+map_update_count = int(100)
+snake_energy = int(10)
+snake_find_energy = int(1)
+snake_move_energy = int(2)
+snake_gerneric_max = float(100)
+snake_gerneric_min = float(-100)
+snake_stop = True
+font_size = int(20)
